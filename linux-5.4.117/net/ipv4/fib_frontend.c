@@ -228,6 +228,17 @@ static inline unsigned int __inet_dev_addr_type(struct net *net,
 
 	rcu_read_lock();
 
+/*
+xiaomi:
+A forwarding information base (FIB), also known as a forwarding table or MAC
+table, is most commonly used in network bridging, routing, and similar
+functions to find the proper output network interface to which the input
+interface should forward a packet. It is a dynamic table that maps MAC
+addresses to ports. It is the essential mechanism that separates network
+switches from Ethernet hubs. Content-addressable memory (CAM) is typically
+used to efficiently implement the FIB, thus it is sometimes called a CAM table
+
+*/
 	table = fib_get_table(net, tb_id);
 	if (table) {
 		ret = RTN_UNICAST;

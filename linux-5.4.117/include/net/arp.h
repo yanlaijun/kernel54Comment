@@ -27,11 +27,11 @@ static inline struct neighbour *__ipv4_neigh_lookup_noref(struct net_device *dev
 	return ___neigh_lookup_noref(&arp_tbl, neigh_key_eq32, arp_hashfn, &key, dev);
 }
 #else
-static inline
+/*static inline
 struct neighbour *__ipv4_neigh_lookup_noref(struct net_device *dev, u32 key)
 {
 	return NULL;
-}
+}*/
 #endif
 
 static inline struct neighbour *__ipv4_neigh_lookup(struct net_device *dev, u32 key)

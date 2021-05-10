@@ -80,6 +80,9 @@ struct neigh_parms {
 	refcount_t refcnt;
 	struct rcu_head rcu_head;
 
+/*
+xiaomi: reachable_time is "(prandom_u32() % base) + (base >> 1)"
+*/
 	int	reachable_time;
 	int	data[NEIGH_VAR_DATA_MAX];
 	DECLARE_BITMAP(data_state, NEIGH_VAR_DATA_MAX);
@@ -134,29 +137,54 @@ struct neigh_statistics {
 struct neighbour {
 	struct neighbour __rcu	*next;
 	struct neigh_table	*tbl;
+	//same to in_dev->arp_parms
 	struct neigh_parms	*parms;
+
 	unsigned long		confirmed;
 	unsigned long		updated;
+
 	rwlock_t		lock;
 	refcount_t		refcnt;
+
 	unsigned int		arp_queue_len_bytes;
 	struct sk_buff_head	arp_queue;
+
 	struct timer_list	timer;
+	/*xiaomi: ost recent time the entry was used*/
 	unsigned long		used;
+
+	/*xiaomi: number of failed solicitation attempts. when its value reaches
+	maximum allowed value, neighbour entry into NUD_FAILED state.
+	max is ucast_solicit ([NEIGH_VAR_UCAST_PROBES])
+	*/
 	atomic_t		probes;
 	__u8			flags;
 	__u8			nud_state;
+	//xiaomi: IP address type: RTN_UNICAST/RTN_BROADCAST/RTN_MULTICAST
 	__u8			type;
 	__u8			dead;
 	u8			protocol;
 	seqlock_t		ha_lock;
 	unsigned char		ha[ALIGN(MAX_ADDR_LEN, sizeof(unsigned long))] __aligned(8);
 	struct hh_cache		hh;
+	/*
+xiaomi:	Function used to transmit frames to the neighbor. The actual routine this
+function pointer points to can change several times during the structure's lifetime,
+	depending on several factors. It is first initialized by the neigh_table's
+	constructor method.
+	It can be updated by calling neigh_connect or neigh_suspect when
+the neighbor state goes to NUD_REACHABLE or NUD_STALE state, respectively.
+
+	*/
 	int			(*output)(struct neighbour *, struct sk_buff *);
 	const struct neigh_ops	*ops;
+
 	struct list_head	gc_list;
+
 	struct rcu_head		rcu;
+
 	struct net_device	*dev;
+
 	u8			primary_key[0];
 } __randomize_layout;
 
@@ -183,23 +211,58 @@ struct pneigh_entry {
 
 #define NEIGH_NUM_HASH_RND	4
 
+/*
+xiaomi: When the number of elements in the table grows bigger than the number of buckets, the table is reorganized.
+This extension of the hash table is performed by neigh_hash_grow, which is called by neigh_create when necessary.
+
+*/
 struct neigh_hash_table {
+/*
+xiaomi: each element of hash_buckets[] is a linked list.
+*/
 	struct neighbour __rcu	**hash_buckets;
+/*
+xiaomi:the size of hash_buckets is (1 << shift) * sizeof(struct neighbour *).
+or said that hash_buckets has (1<<shift) elements.
+For ARP, it's initial value was 3 in function neigh_table_init().
+*/
 	unsigned int		hash_shift;
+/*xiaomi: NEIGH_NUM_HASH_RND rand value was assigned in function neigh_hash_alloc() */
 	__u32			hash_rnd[NEIGH_NUM_HASH_RND];
 	struct rcu_head		rcu;
 };
 
 
 struct neigh_table {
+	/*
+	xiaomi:
+		.family		= AF_INET,
+		.key_len	= 4,
+		.protocol	= cpu_to_be16(ETH_P_IP),
+		.entry_size is the neighbor size that is different for IPv4 ARP and IPv6 ND
+		because of different size of primary_key (primary_key is IP address)
+	*/
 	int			family;
 	unsigned int		entry_size;
 	unsigned int		key_len;
 	__be16			protocol;
+	/*
+	xiaomi:
+		pkey: L3 IP address,
+		the highest hash_shift bits of this function was the index of
+		hash_buckets. (ref neigh_lookup())
+
+	*/
 	__u32			(*hash)(const void *pkey,
 					const struct net_device *dev,
 					__u32 *hash_rnd);
 	bool			(*key_eq)(const struct neighbour *, const void *pkey);
+	/*
+	xiaomi: The constructor method is invoked by neigh_create when creating a new entry,
+and initializes the protocol-specific fields of a new neighbour entry. For
+example, the one used by ARP( arp_constructor) is described in detail in the section "
+Initialization of a neighbour Structure" in Chapter 28.
+	*/
 	int			(*constructor)(struct neighbour *);
 	int			(*pconstructor)(struct pneigh_entry *);
 	void			(*pdestructor)(struct pneigh_entry *);
@@ -207,24 +270,52 @@ struct neigh_table {
 	int			(*is_multicast)(const void *pkey);
 	bool			(*allow_add)(const struct net_device *dev,
 					     struct netlink_ext_ack *extack);
+	/*xiaomi: id is "arp_cache"*/
 	char			*id;
 	struct neigh_parms	parms;
 	struct list_head	parms_list;
+
 	int			gc_interval;
+
+/*
+xiaomi:These three thresholds define different levels of memory usage granted to the
+neighbour entries currently cached by the neighboring protocol.
+
+*/
 	int			gc_thresh1;
 	int			gc_thresh2;
 	int			gc_thresh3;
+
+/*
+xiaomi:
+This variable, measured in jiffies, represents the most recent time neigh_
+forced_gc was executed.
+
+*/
 	unsigned long		last_flush;
 	struct delayed_work	gc_work;
 	struct timer_list 	proxy_timer;
 	struct sk_buff_head	proxy_queue;
+
+	/*xiaomi: Number of neighbour instances currently in the protocol's cache. Its value is
+incremented when allocating a new entry with neigh_alloc and decremented
+when deallocating an entry with neigh_destroy. */
 	atomic_t		entries;
+
+/*xiaomi: number of entries on gc_list is gc_entries. gc_entries will be compared with gc_threshX.
+Neighbour entry to be removed will be added on gc_list*/
 	atomic_t		gc_entries;
 	struct list_head	gc_list;
 	rwlock_t		lock;
+
 	unsigned long		last_rand;
 	struct neigh_statistics	__percpu *stats;
+
+	/*
+	xiaomi: hash table for caching neighbour.
+	*/
 	struct neigh_hash_table __rcu *nht;
+
 	struct pneigh_entry	**phash_buckets;
 };
 
@@ -250,11 +341,21 @@ static inline void *neighbour_priv(const struct neighbour *n)
 }
 
 /* flags for neigh_update() */
+/*
+xiaomi:The current L2 address can be overridden by lladdr. Administrative changes
+use this flag to distinguish between replace and add commands, among
+other things (see Table 29-1 in Chapter 29).
+*/
 #define NEIGH_UPDATE_F_OVERRIDE			0x00000001
 #define NEIGH_UPDATE_F_WEAK_OVERRIDE		0x00000002
 #define NEIGH_UPDATE_F_OVERRIDE_ISROUTER	0x00000004
 #define NEIGH_UPDATE_F_EXT_LEARNED		0x20000000
 #define NEIGH_UPDATE_F_ISROUTER			0x40000000
+/*
+xiaomi:Administrative change. This means the change derives from a user-space
+command (see the section ?System Administration of Neighbors? in
+Chapter 29).
+*/
 #define NEIGH_UPDATE_F_ADMIN			0x80000000
 
 extern const struct nla_policy nda_policy[];
@@ -291,6 +392,9 @@ static inline struct neighbour *___neigh_lookup_noref(
 	struct neighbour *n;
 	u32 hash_val;
 
+/*
+xiaomi: highest hash_shift bits as the index of hash_buckets
+*/
 	hash_val = hash(pkey, dev, nht->hash_rnd) >> (32 - nht->hash_shift);
 	for (n = rcu_dereference_bh(nht->hash_buckets[hash_val]);
 	     n != NULL;

@@ -478,8 +478,14 @@ static void ipv4_confirm_neigh(const struct dst_entry *dst, const void *daddr)
 
 #define IP_IDENTS_SZ 2048u
 
+/*
+xaiomi:
 static atomic_t *ip_idents __read_mostly;
 static u32 *ip_tstamps __read_mostly;
+*/
+static atomic_t *ip_idents;
+static u32 *ip_tstamps;
+
 
 /* In order to protect privacy, we add a perturbation to identifiers
  * if one generator is seldom used. This makes hard for an attacker

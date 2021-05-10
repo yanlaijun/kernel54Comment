@@ -149,6 +149,9 @@ static const struct neigh_ops arp_direct_ops = {
 	.connected_output =	neigh_direct_output,
 };
 
+/*
+xiaomi: "net/ipv6/ndisc.c" is for IPv6 neighbour discovery.
+*/
 struct neigh_table arp_tbl = {
 	.family		= AF_INET,
 	.key_len	= 4,
@@ -165,7 +168,17 @@ struct neigh_table arp_tbl = {
 		.data	= {
 			[NEIGH_VAR_MCAST_PROBES] = 3,
 			[NEIGH_VAR_UCAST_PROBES] = 3,
+/*
+		Similarly, the retrans_time field  indicates that if no reply is received to a solicitation, a new
+		   one will be sent after 1 second.
+			*/
 			[NEIGH_VAR_RETRANS_TIME] = 1 * HZ,
+/*
+			the value of the base_reachable_
+			time field (described in the section "neigh_parms Structure" in Chapter 29)
+			indicates that ARP considers an entry NUD_REACHABLE only if the last proof of reachability
+			arrived within the last 30 seconds.
+			*/
 			[NEIGH_VAR_BASE_REACHABLE_TIME] = 30 * HZ,
 			[NEIGH_VAR_DELAY_PROBE_TIME] = 5 * HZ,
 			[NEIGH_VAR_GC_STALETIME] = 60 * HZ,
@@ -277,6 +290,11 @@ static int arp_constructor(struct neighbour *neigh)
 			memcpy(neigh->ha, dev->broadcast, dev->addr_len);
 		}
 
+/*
+xiaomi
+@header_ops:    Includes callbacks for creating,parsing,caching,etc
+*		   of Layer 2 headers.
+*/
 		if (dev->header_ops->cache)
 			neigh->ops = &arp_hh_ops;
 		else
@@ -1448,10 +1466,10 @@ static int __init arp_proc_init(void)
 }
 
 #else /* CONFIG_PROC_FS */
-
+/*
 static int __init arp_proc_init(void)
 {
 	return 0;
 }
-
+*/
 #endif /* CONFIG_PROC_FS */
