@@ -490,6 +490,7 @@ static void dev_watchdog_down(struct net_device *dev)
  *
  * Device has detected acquisition of carrier.
  */
+ //YLJ-NET: notify user space that netlink goes up
 void netif_carrier_on(struct net_device *dev)
 {
 	if (test_and_clear_bit(__LINK_STATE_NOCARRIER, &dev->state)) {
@@ -509,6 +510,7 @@ EXPORT_SYMBOL(netif_carrier_on);
  *
  * Device has detected loss of carrier.
  */
+ //YLJ-NET: notify user space that netlink goes down
 void netif_carrier_off(struct net_device *dev)
 {
 	if (!test_and_set_bit(__LINK_STATE_NOCARRIER, &dev->state)) {

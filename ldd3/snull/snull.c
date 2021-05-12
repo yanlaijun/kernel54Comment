@@ -78,6 +78,7 @@ module_param(pool_size, int, 0);
  */
 
 struct snull_priv {
+	//YLJ-LDD3: netdevice driver is responsible for statistics
 	struct net_device_stats stats;
 	int status;
 	struct snull_packet *ppool;
@@ -119,13 +120,13 @@ void snull_teardown_pool(struct net_device *dev)
 {
 	struct snull_priv *priv = netdev_priv(dev);
 	struct snull_packet *pkt;
-    
+
 	while ((pkt = priv->ppool)) {
 		priv->ppool = pkt->next;
 		kfree (pkt);
 		/* FIXME - in-flight packets ? */
 	}
-}    
+}
 
 /*
  * Buffer/pool management.
@@ -135,7 +136,7 @@ struct snull_packet *snull_get_tx_buffer(struct net_device *dev)
 	struct snull_priv *priv = netdev_priv(dev);
 	unsigned long flags;
 	struct snull_packet *pkt;
-    
+
 	spin_lock_irqsave(&priv->lock, flags);
 	pkt = priv->ppool;
 	if(!pkt) {
@@ -156,11 +157,19 @@ void snull_release_buffer(struct snull_packet *pkt)
 {
 	unsigned long flags;
 	struct snull_priv *priv = netdev_priv(pkt->dev);
-	
+
 	spin_lock_irqsave(&priv->lock, flags);
 	pkt->next = priv->ppool;
 	priv->ppool = pkt;
 	spin_unlock_irqrestore(&priv->lock, flags);
+/*
+ *	netif_wake_queue - restart transmit
+ *	@dev: network device
+ *
+ *	Allow upper layers to call the device hard_start_xmit routine.
+ *	Used for flow control when transmit resources are available.
+static inline void netif_wake_queue(struct net_device *dev)
+*/
 	if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
 		netif_wake_queue(pkt->dev);
 }
@@ -199,7 +208,7 @@ static void snull_rx_ints(struct net_device *dev, int enable)
 	priv->rx_int_enabled = enable;
 }
 
-    
+
 /*
  * Open and close
  */
@@ -208,7 +217,7 @@ int snull_open(struct net_device *dev)
 {
 	/* request_region(), request_irq(), ....  (like fops->open) */
 
-	/* 
+	/*
 	 * Assign the hardware address of the board: use "\0SNULx", where
 	 * x is 0 or 1. The first byte is '\0' to avoid being a multicast
 	 * address (the first byte of multicast addrs is odd).
@@ -220,12 +229,27 @@ int snull_open(struct net_device *dev)
 		struct snull_priv *priv = netdev_priv(dev);
 		napi_enable(&priv->napi);
 	}
+/*
+/**
+ *	netif_start_queue - allow transmit
+ *	@dev: network device
+ *
+ *	Allow upper layers to call the device hard_start_xmit routine.
+static inline void netif_start_queue(struct net_device *dev)
+*/
 	netif_start_queue(dev);
 	return 0;
 }
 
 int snull_release(struct net_device *dev)
 {
+/*
+ *	netif_stop_queue - stop transmitted packets
+ *	@dev: network device
+ *	Stop upper layers calling the device hard_start_xmit routine.
+ *	Used for flow control when transmit resources are unavailable.
+static inline void netif_stop_queue(struct net_device *dev)
+*/
     /* release ports, irq and such -- like fops->close */
 
 	netif_stop_queue(dev); /* can't transmit any more */
@@ -279,7 +303,7 @@ void snull_rx(struct net_device *dev, struct snull_packet *pkt)
 		priv->stats.rx_dropped++;
 		goto out;
 	}
-	skb_reserve(skb, 2); /* align IP on 16B boundary */  
+	skb_reserve(skb, 2); /* align IP on 16B boundary */
 	memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
 
 	/* Write metadata, and then pass to the receive level */
@@ -288,14 +312,30 @@ void snull_rx(struct net_device *dev, struct snull_packet *pkt)
 	skb->ip_summed = CHECKSUM_UNNECESSARY; /* don't check it */
 	priv->stats.rx_packets++;
 	priv->stats.rx_bytes += pkt->datalen;
+/*
+/**YLJ-LDD3: netif_rx	-	post buffer to the network code
+ *	@skb: buffer to post
+ *	This function receives a packet from a device driver and queues it for
+ *	the upper (protocol) levels to process.
+    It always succeeds. The buffer may be dropped during processing for congestion control or by the
+ *	protocol layers.
+ *	return values:
+ *	NET_RX_SUCCESS	(no congestion)
+ *	NET_RX_DROP     (packet was dropped)
+int netif_rx(struct sk_buff *skb)
+
+*/
 	netif_rx(skb);
   out:
 	return;
 }
-    
+
 
 /*
  * The poll implementation.
+ */
+ /*
+ YLJ-LDD3: budget: max number of packets that we are allowed to pass into the kernel
  */
 static int snull_poll(struct napi_struct *napi, int budget)
 {
@@ -304,7 +344,7 @@ static int snull_poll(struct napi_struct *napi, int budget)
 	struct snull_priv *priv = container_of(napi, struct snull_priv, napi);
 	struct net_device *dev = priv->dev;
 	struct snull_packet *pkt;
-    
+
 	while (npackets < budget && priv->rx_queue) {
 		pkt = snull_dequeue_buf(dev);
 		skb = dev_alloc_skb(pkt->datalen + 2);
@@ -316,14 +356,30 @@ static int snull_poll(struct napi_struct *napi, int budget)
 			snull_release_buffer(pkt);
 			continue;
 		}
-		skb_reserve(skb, 2); /* align IP on 16B boundary */  
+		skb_reserve(skb, 2); /* align IP on 16B boundary */
 		memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
 		skb->dev = dev;
 		skb->protocol = eth_type_trans(skb, dev);
 		skb->ip_summed = CHECKSUM_UNNECESSARY; /* don't check it */
+		/**
+		 *	netif_receive_skb - process receive buffer from network
+		 *	@skb: buffer to process
+		 *
+		 *	netif_receive_skb() is the main receive data processing function.
+		 *	It always succeeds. The buffer may be dropped during processing
+		 *	for congestion control or by the protocol layers.
+		 *
+		 *	This function may only be called from softirq context and interrupts
+		 *	should be enabled.
+		 *
+		 *	Return values (usually ignored):
+		 *	NET_RX_SUCCESS: no congestion
+		 *	NET_RX_DROP: packet was dropped
+		int netif_receive_skb(struct sk_buff *skb)
+		 */
 		netif_receive_skb(skb);
-		
-        	/* Maintain stats */
+
+        /* Maintain stats */
 		npackets++;
 		priv->stats.rx_packets++;
 		priv->stats.rx_bytes += pkt->datalen;
@@ -342,8 +398,8 @@ static int snull_poll(struct napi_struct *napi, int budget)
 	/* We couldn't process everything. */
 	return npackets;
 }
-	    
-        
+
+
 /*
  * The typical interrupt entry point
  */
@@ -455,7 +511,7 @@ static void snull_hw_tx(char *buf, int len, struct net_device *dev)
 	struct snull_priv *priv;
 	u32 *saddr, *daddr;
 	struct snull_packet *tx_buffer;
-    
+
 	/* I am paranoid. Ain't I? */
 	if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
 		printk("snull: Hmm... packet too short (%i octets)\n",
@@ -538,6 +594,9 @@ int snull_tx(struct sk_buff *skb, struct net_device *dev)
 	char *data, shortpkt[ETH_ZLEN];
 	struct snull_priv *priv = netdev_priv(dev);
 
+/*
+YLJ-LDD3: skb->data includes ethernet header
+*/
 	data = skb->data;
 	len = skb->len;
 	if (len < ETH_ZLEN) {
@@ -546,6 +605,11 @@ int snull_tx(struct sk_buff *skb, struct net_device *dev)
 		len = ETH_ZLEN;
 		data = shortpkt;
 	}
+	/*
+	//legacy drivers only, netdev_start_xmit() sets txq->trans_start
+
+	static inline void netif_trans_update(struct net_device *dev)
+	*/
 	netif_trans_update(dev);
 
 	/* Remember the skb, so we can free it at interrupt time */
@@ -569,7 +633,7 @@ void snull_tx_timeout (struct net_device *dev, unsigned int txqueue)
 #endif
 {
 	struct snull_priv *priv = netdev_priv(dev);
-        struct netdev_queue *txq = netdev_get_tx_queue(dev, 0);
+    struct netdev_queue *txq = netdev_get_tx_queue(dev, 0);
 
 	PDEBUG("Transmit timeout at %ld, latency %ld\n", jiffies,
 			jiffies - txq->trans_start);
@@ -591,7 +655,7 @@ void snull_tx_timeout (struct net_device *dev, unsigned int txqueue)
 
 
 /*
- * Ioctl commands 
+ * Ioctl commands
  */
 int snull_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
@@ -616,7 +680,7 @@ int snull_rebuild_header(struct sk_buff *skb)
 {
 	struct ethhdr *eth = (struct ethhdr *) skb->data;
 	struct net_device *dev = skb->dev;
-    
+
 	memcpy(eth->h_source, dev->dev_addr, dev->addr_len);
 	memcpy(eth->h_dest, dev->dev_addr, dev->addr_len);
 	eth->h_dest[ETH_ALEN-1]   ^= 0x01;   /* dest is us xor 1 */
@@ -650,7 +714,7 @@ int snull_change_mtu(struct net_device *dev, int new_mtu)
 	unsigned long flags;
 	struct snull_priv *priv = netdev_priv(dev);
 	spinlock_t *lock = &priv->lock;
-    
+
 	/* check ranges */
 	if ((new_mtu < 68) || (new_mtu > 1500))
 		return -EINVAL;
@@ -668,13 +732,74 @@ static const struct header_ops snull_header_ops = {
 };
 
 static const struct net_device_ops snull_netdev_ops = {
+	/*
+	* int (*ndo_open)(struct net_device *dev);
+	*	  This function is called when a network device transitions to the up
+	*	  state.
+	*/
 	.ndo_open            = snull_open,
+	/*
+	* int (*ndo_stop)(struct net_device *dev);
+	*	  This function is called when a network device transitions to the down
+	*	  state.
+	*/
 	.ndo_stop            = snull_release,
+	/*
+	* netdev_tx_t (*ndo_start_xmit)(struct sk_buff *skb,
+	*								struct net_device *dev);
+	*  Called when a packet needs to be transmitted.
+	*  Returns NETDEV_TX_OK.  Can return NETDEV_TX_BUSY, but you should stop
+	*  the queue before that can happen; it's for obsolete devices and weird
+	*  corner cases, but the stack really does a non-trivial amount
+	*  of useless work if you return NETDEV_TX_BUSY.
+	*  Required; cannot be NULL.
+	*/
 	.ndo_start_xmit      = snull_tx,
+	/*
+	* int (*ndo_do_ioctl)(struct net_device *dev, struct ifreq *ifr, int cmd);
+	*  Called when a user requests an ioctl which can't be handled by
+	*  the generic interface code. If not defined ioctls return
+	*  not supported error code.
+	*/
 	.ndo_do_ioctl        = snull_ioctl,
+	/*
+	* int (*ndo_set_config)(struct net_device *dev, struct ifmap *map);
+	*  Used to set network devices bus interface parameters. This interface
+	*  is retained for legacy reasons; new devices should use the bus
+	*  interface (PCI) for low level management.
+	*/
 	.ndo_set_config      = snull_config,
+/*
+
+	* void (*ndo_get_stats64)(struct net_device *dev,
+	*						  struct rtnl_link_stats64 *storage);
+	* struct net_device_stats* (*ndo_get_stats)(struct net_device *dev);
+	*  Called when a user wants to get the network device usage
+	*  statistics. Drivers must do one of the following:
+	*  1. Define @ndo_get_stats64 to fill in a zero-initialised
+	*  rtnl_link_stats64 structure passed by the caller.
+	*  2. Define @ndo_get_stats to update a net_device_stats structure
+	*  (which should normally be dev->stats) and return a pointer to
+	*  it. The structure may be changed asynchronously only if each
+	*  field is written atomically.
+	*  3. Update dev->stats asynchronously and atomically, and define
+	*  neither operation.
+	*/
 	.ndo_get_stats       = snull_stats,
+
+	/*
+	* int (*ndo_change_mtu)(struct net_device *dev, int new_mtu);
+	*  Called when a user wants to change the Maximum Transfer Unit
+	*  of a device.
+	*/
 	.ndo_change_mtu      = snull_change_mtu,
+
+	/*
+	* void (*ndo_tx_timeout)(struct net_device *dev);
+	*  Callback used when the transmitter has not made any progress
+	*  for dev->watchdog ticks.
+	*
+	*/
 	.ndo_tx_timeout      = snull_tx_timeout,
 };
 
@@ -689,18 +814,22 @@ void snull_init(struct net_device *dev)
     	/*
 	 * Make the usual checks: check_region(), probe irq, ...  -ENODEV
 	 * should be returned if no device found.  No resource should be
-	 * grabbed: this is done on open(). 
+	 * grabbed: this is done on open().
 	 */
 #endif
 
-    	/* 
+    	/*
 	 * Then, assign other fields in dev, using ether_setup() and some
 	 * hand assignments
 	 */
 	ether_setup(dev); /* assign some of the fields */
 	dev->watchdog_timeo = timeout;
+
+	//YLJ-LDD3: struct net_device_ops *netdev_ops;
 	dev->netdev_ops = &snull_netdev_ops;
+	//YLJ-LDD3: struct header_ops *header_ops;
 	dev->header_ops = &snull_header_ops;
+
 	/* keep the default flags, just add NOARP */
 	dev->flags           |= IFF_NOARP;
 	dev->features        |= NETIF_F_HW_CSUM;
@@ -709,6 +838,7 @@ void snull_init(struct net_device *dev)
 	 * Then, initialize the priv field. This encloses the statistics
 	 * and a few private fields.
 	 */
+	 //YLJ-LDD3: netdev_priv
 	priv = netdev_priv(dev);
 	memset(priv, 0, sizeof(struct snull_priv));
 	if (use_napi) {
@@ -736,7 +866,7 @@ struct net_device *snull_devs[2];
 void snull_cleanup(void)
 {
 	int i;
-    
+
 	for (i = 0; i < 2;  i++) {
 		if (snull_devs[i]) {
 			unregister_netdev(snull_devs[i]);
@@ -759,6 +889,10 @@ int snull_init_module(void)
 	/* Allocate the devices */
 	snull_devs[0] = alloc_netdev(sizeof(struct snull_priv), "sn%d",
 			NET_NAME_UNKNOWN, snull_init);
+	/*
+	YLJ-LDD3: snull_init is called in alloc_netdev()
+	YLJ-LDD3: 'struct snull_priv' is allocated at the end of 'struct net_device'
+	*/
 	snull_devs[1] = alloc_netdev(sizeof(struct snull_priv), "sn%d",
 			NET_NAME_UNKNOWN, snull_init);
 	if (snull_devs[0] == NULL || snull_devs[1] == NULL)
@@ -772,7 +906,7 @@ int snull_init_module(void)
 		else
 			ret = 0;
    out:
-	if (ret) 
+	if (ret)
 		snull_cleanup();
 	return ret;
 }

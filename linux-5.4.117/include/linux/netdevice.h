@@ -155,6 +155,22 @@ static inline bool dev_xmit_complete(int rc)
 #define MAX_HEADER (LL_MAX_HEADER + 48)
 #endif
 
+
+
+
+#include <linux/cache.h>
+#include <linux/skbuff.h>
+
+#ifdef CONFIG_RPS
+#include <linux/static_key.h>
+extern struct static_key_false rps_needed;
+extern struct static_key_false rfs_needed;
+#endif
+
+struct neighbour;
+struct neigh_parms;
+struct sk_buff;
+
 /*
  *	Old network device statistics. Fields are native words
  *	(unsigned long) so they can be read and written atomically.
@@ -185,20 +201,6 @@ struct net_device_stats {
 	unsigned long	rx_compressed;
 	unsigned long	tx_compressed;
 };
-
-
-#include <linux/cache.h>
-#include <linux/skbuff.h>
-
-#ifdef CONFIG_RPS
-#include <linux/static_key.h>
-extern struct static_key_false rps_needed;
-extern struct static_key_false rfs_needed;
-#endif
-
-struct neighbour;
-struct neigh_parms;
-struct sk_buff;
 
 struct netdev_hw_addr {
 	struct list_head	list;
@@ -1247,6 +1249,7 @@ struct tlsdev_ops;
  *	rtnl_lock is not held.
  */
 struct net_device_ops {
+//YLJ: ndo_init is called in function register_netdevice
 	int			(*ndo_init)(struct net_device *dev);
 	void			(*ndo_uninit)(struct net_device *dev);
 	int			(*ndo_open)(struct net_device *dev);
@@ -1788,6 +1791,7 @@ enum netdev_ml_priv_type {
  */
 
 struct net_device {
+	//YLJ: it's a print style name "sn%d"
 	char			name[IFNAMSIZ];
 	struct hlist_node	name_hlist;
 	struct dev_ifalias	__rcu *ifalias;
@@ -1864,6 +1868,7 @@ struct net_device {
 
 	const struct header_ops *header_ops;
 
+//YlJ: IFF_UP, IFF_NOARP, IFF_RUNNING, IFF_BROADCAST
 	unsigned int		flags;
 	unsigned int		priv_flags;
 

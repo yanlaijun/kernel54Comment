@@ -32,6 +32,15 @@
 #define ETH_ALEN	6		/* Octets in one ethernet addr	 */
 #define ETH_TLEN	2		/* Octets in ethernet type field */
 #define ETH_HLEN	14		/* Total octets in header.	 */
+/*
+YLJ:
+Allowed Packet Lengths
+Ethernet packets with less than the minimum 64 bytes for an Ethernet packet (
+header + user data + FCS) are padded to 64 bytes, which means that if there's
+less than 64-(14+4) = 46 bytes of user data, extra padding data is added to
+the packet.
+'sans' means 'without'
+*/
 #define ETH_ZLEN	60		/* Min. octets in frame sans FCS */
 #define ETH_DATA_LEN	1500		/* Max. octets in payload	 */
 #define ETH_FRAME_LEN	1514		/* Max. octets in frame sans FCS */

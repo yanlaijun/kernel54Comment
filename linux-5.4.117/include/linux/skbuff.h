@@ -2167,7 +2167,8 @@ void skb_coalesce_rx_frag(struct sk_buff *skb, int i, int size,
 #define SKB_LINEAR_ASSERT(skb)  BUG_ON(skb_is_nonlinear(skb))
 
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
-static inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
+//YLJ:
+/*static inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
 {
 	return skb->head + skb->tail;
 }
@@ -2182,7 +2183,7 @@ static inline void skb_set_tail_pointer(struct sk_buff *skb, const int offset)
 	skb_reset_tail_pointer(skb);
 	skb->tail += offset;
 }
-
+*/
 #else /* NET_SKBUFF_DATA_USES_OFFSET */
 static inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
 {
